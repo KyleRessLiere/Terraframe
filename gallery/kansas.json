@@ -1,0 +1,27 @@
+{
+  "relief_m": 94.2,
+  "printed_relief_mm": 9.05,
+  "printed_relief_pct_of_width": 4.52,
+  "exaggeration_used": 12.5,
+  "smooth_sigma_used": 1.345,
+  "smooth_ground_m": 40.0,
+  "roughness": 7.9142,
+  "spike_count": 142246,
+  "isolated_spike_count": 2719,
+  "pct_flat": 0.0,
+  "meters_per_px": 29.74,
+  "zoom": 12,
+  "grid": [
+    875,
+    750
+  ],
+  "reference_width_mm": 200.0,
+  "scene": "kansas",
+  "terrain": "near-zero relief, worst case",
+  "bbox": [
+    38.8,
+    -97.75,
+    39.0,
+    -97.45
+  ]
+}

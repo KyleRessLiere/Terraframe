@@ -1,0 +1,27 @@
+{
+  "relief_m": 317.1,
+  "printed_relief_mm": 35.99,
+  "printed_relief_pct_of_width": 18.0,
+  "exaggeration_used": 12.5,
+  "smooth_sigma_used": 1.324,
+  "smooth_ground_m": 40.0,
+  "roughness": 26.6266,
+  "spike_count": 10538,
+  "isolated_spike_count": 549,
+  "pct_flat": 58.46,
+  "meters_per_px": 30.21,
+  "zoom": 12,
+  "grid": [
+    729,
+    554
+  ],
+  "reference_width_mm": 200.0,
+  "scene": "sf_coast",
+  "terrain": "coastline + ocean + city",
+  "bbox": [
+    37.7,
+    -122.6,
+    37.85,
+    -122.35
+  ]
+}

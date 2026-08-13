@@ -1,0 +1,27 @@
+{
+  "relief_m": 69.6,
+  "printed_relief_mm": 36.0,
+  "printed_relief_pct_of_width": 18.0,
+  "exaggeration_used": 10.372,
+  "smooth_sigma_used": 6.0,
+  "smooth_ground_m": 22.3,
+  "roughness": 1.7152,
+  "spike_count": 29439,
+  "isolated_spike_count": 2208,
+  "pct_flat": 0.0,
+  "meters_per_px": 3.72,
+  "zoom": 15,
+  "grid": [
+    1077,
+    1077
+  ],
+  "reference_width_mm": 200.0,
+  "scene": "stoneybrooke",
+  "terrain": "flat suburb",
+  "bbox": [
+    38.75,
+    -77.1244,
+    38.786,
+    -77.0782
+  ]
+}

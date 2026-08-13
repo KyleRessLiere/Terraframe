@@ -209,11 +209,21 @@ def test_smooth_rejects_non_2d() -> None:
 
 
 def test_auto_smooth_sigma_clamps_at_both_ends() -> None:
-    """Fine grids hit the ceiling, coarse grids hit the floor."""
-    assert auto_smooth_sigma(5.0) == pytest.approx(SMOOTH_SIGMA_MAX)
-    assert auto_smooth_sigma(5.0) == pytest.approx(4.0)
-    assert auto_smooth_sigma(150.0) == pytest.approx(SMOOTH_SIGMA_MIN)
-    assert auto_smooth_sigma(150.0) == pytest.approx(0.5)
+    """Fine grids hit the ceiling, coarse grids hit the floor.
+
+    Derived from the constants rather than frozen numbers: these are tuning
+    knobs, and a hardcoded expectation here just breaks every time they move
+    without saying anything about whether clamping still works.
+    """
+    # A resolution fine enough that the ideal sigma overshoots the ceiling.
+    fine = SMOOTH_GROUND_METERS / (SMOOTH_SIGMA_MAX * 2.0)
+    assert SMOOTH_GROUND_METERS / fine > SMOOTH_SIGMA_MAX, "test's own premise"
+    assert auto_smooth_sigma(fine) == pytest.approx(SMOOTH_SIGMA_MAX)
+
+    # And one coarse enough that it undershoots the floor.
+    coarse = SMOOTH_GROUND_METERS / (SMOOTH_SIGMA_MIN / 2.0)
+    assert SMOOTH_GROUND_METERS / coarse < SMOOTH_SIGMA_MIN, "test's own premise"
+    assert auto_smooth_sigma(coarse) == pytest.approx(SMOOTH_SIGMA_MIN)
 
 
 def test_auto_smooth_sigma_targets_a_constant_ground_radius() -> None:

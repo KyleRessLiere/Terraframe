@@ -42,7 +42,7 @@ TARGET_RELIEF_RATIO = 0.18
 AUTO_EXAGGERATION_MIN = 1.0
 
 #: Beyond this, plains stop looking like terrain and start looking like noise.
-AUTO_EXAGGERATION_MAX = 5.0
+AUTO_EXAGGERATION_MAX = 12.5
 
 #: Supported output containers, mapped to trimesh's exporter names.
 _EXPORT_FORMATS = {".stl": "stl", ".3mf": "3mf"}

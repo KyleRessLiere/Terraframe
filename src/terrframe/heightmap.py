@@ -88,13 +88,13 @@ MAX_SPIKE_CLUSTER_PX = 4
 
 #: Ground radius the automatic smoothing aims for, in metres. Roughly the
 #: scale of the trees and buildings that need to come off.
-SMOOTH_GROUND_METERS = 20.0
+SMOOTH_GROUND_METERS = 40.0
 
 #: Sigma floor: below this, blurring does nothing useful.
 SMOOTH_SIGMA_MIN = 0.5
 
 #: Sigma ceiling: above this, real landforms start dissolving.
-SMOOTH_SIGMA_MAX = 4.0
+SMOOTH_SIGMA_MAX = 6.0
 
 
 @dataclass(frozen=True)

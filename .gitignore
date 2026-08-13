@@ -1,4 +1,4 @@
-# Python
+﻿# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -13,9 +13,11 @@ venv/
 *.stl
 *.3mf
 runs/
+# gallery/ is deliberately committed: it is the visual regression baseline.
 
 # Editors / OS
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+

@@ -1,0 +1,27 @@
+{
+  "relief_m": 1765.1,
+  "printed_relief_mm": 36.0,
+  "printed_relief_pct_of_width": 18.0,
+  "exaggeration_used": 3.527,
+  "smooth_sigma_used": 0.674,
+  "smooth_ground_m": 40.0,
+  "roughness": 38.0199,
+  "spike_count": 200966,
+  "isolated_spike_count": 2348,
+  "pct_flat": 24.18,
+  "meters_per_px": 59.32,
+  "zoom": 11,
+  "grid": [
+    583,
+    939
+  ],
+  "reference_width_mm": 200.0,
+  "scene": "tahoe",
+  "terrain": "alpine + big lake",
+  "bbox": [
+    38.85,
+    -120.25,
+    39.35,
+    -119.85
+  ]
+}

@@ -17,6 +17,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
+from scipy.ndimage import label
 
 from terrframe.heightmap import Heightmap, build_heightmap
 
@@ -35,9 +36,19 @@ TERRAIN_RAMP: list[tuple[float, tuple[int, int, int]]] = [
 #: Flat water is drawn as water, not as the bottom of the land ramp.
 WATER_RGB = (58, 92, 124)
 
-#: Fraction of the image that must sit exactly at the minimum before we treat
-#: that level as a flattened water surface rather than an incidental low point.
+#: Fraction of the image a flat region must cover to count as water rather
+#: than an incidental plateau.
 WATER_MIN_FRACTION = 0.005
+
+#: Gradient magnitude (metres per pixel, before exaggeration) below which
+#: ground counts as dead flat.
+#:
+#: Terrarium quantises elevation to 1/256 m = 0.0039 m, and a lake surface
+#: wobbles by a quantum or two, which is a gradient of ~0.002 -- so anything
+#: tighter than that punches a lattice of holes in otherwise flat water. This
+#: sits a few quanta above, and is scaled by the exaggeration in use because
+#: stretching the terrain stretches its gradients too.
+WATER_FLATNESS_EPS = 0.01
 
 
 def hillshade(
@@ -105,15 +116,36 @@ def elevation_tint(elevation: np.ndarray) -> np.ndarray:
     return rgb.astype(np.float32)
 
 
-def _water_mask(elevation: np.ndarray) -> np.ndarray:
-    """Find a flattened water surface, if the heightmap has one."""
-    low = float(np.nanmin(elevation))
-    if low > 0.0:
+def _water_mask(elevation: np.ndarray, exaggeration: float = 1.0) -> np.ndarray:
+    """Find water surfaces: large regions with essentially no slope.
+
+    Keyed on flatness rather than on sitting at sea level, so an inland lake
+    is recognised too -- Lake Tahoe's surface is at 1897 m over a 1528 m valley
+    floor, and a "minimum elevation" test misses it entirely.
+
+    Real terrain always has some slope, and blurring a constant region leaves
+    it constant, so a near-zero gradient over a large connected area is a
+    reliable signature of water at any elevation.
+
+    Args:
+        elevation: 2D array, already exaggerated.
+        exaggeration: Vertical factor baked into ``elevation``; the flatness
+            threshold scales with it, since stretching terrain stretches its
+            gradients.
+    """
+    d_row, d_col = np.gradient(elevation.astype(np.float64))
+    flat = np.hypot(d_row, d_col) < WATER_FLATNESS_EPS * max(exaggeration, 1.0)
+    if not flat.any():
         return np.zeros(elevation.shape, dtype=bool)
-    mask = elevation <= low
-    if mask.mean() < WATER_MIN_FRACTION:
+
+    labels, count = label(flat, structure=np.ones((3, 3), dtype=int))
+    if not count:
         return np.zeros(elevation.shape, dtype=bool)
-    return mask
+
+    sizes = np.bincount(labels.ravel())
+    keep = sizes >= WATER_MIN_FRACTION * elevation.size
+    keep[0] = False  # background label is not a region
+    return keep[labels]
 
 
 def render(heightmap: Heightmap, z_factor: float = 1.5) -> Image.Image:
@@ -130,7 +162,7 @@ def render(heightmap: Heightmap, z_factor: float = 1.5) -> Image.Image:
     shade = hillshade(elevation, heightmap.meters_per_px, z_factor=z_factor)
     rgb = elevation_tint(elevation)
 
-    water = _water_mask(elevation)
+    water = _water_mask(elevation, heightmap.exaggeration)
     if water.any():
         rgb[water] = np.array(WATER_RGB, dtype=np.float32) / 255.0
 
