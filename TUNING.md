@@ -162,6 +162,43 @@ be reached by any constant setting, so `gallery.py` reports both a `spike_count`
 across runs, not the absolute value. A jump in `isolated_spike_count` between
 gallery runs is a genuine regression signal; a nonzero value is not.
 
+## Follow-up: what the 2D validation missed
+
+All of the tuning above was judged on hillshaded heightmaps. Rendering the
+**exported STLs** afterwards (`scripts/render3d.py`, see
+`gallery/contact_sheet_3d.png`) surfaced a defect that 2D review could not:
+
+**sf_coast prints downtown's high-rises as spires.** Seen from directly above
+with a synthetic light, a 300 m tower is a small bright dot, indistinguishable
+from a crag. Seen in 3D at ×12.5 exaggeration it is an obvious fragile needle.
+
+Measured on the finished heightmap at 30.2 m/px:
+
+| | |
+| --- | --- |
+| raw max elevation | 325.7 m |
+| Mt Davidson (SF's true high point) | 282 m |
+| blobs >40 m above a 21×21 median | 1821 px in 52 blobs |
+| largest blob footprints | 76–136 px |
+| their excess over surroundings | 67–83 m |
+
+Two consequences:
+
+1. **`despike` is not at fault.** Its cluster limit is 4 px; these are 76–136 px
+   masses. They are not isolated needles, and raising the limit to cover them
+   would eat real landforms of the same size.
+2. **`auto_exaggeration` is being sized off a rooftop.** It reads sf_coast's
+   relief as 317 m when the terrain's real relief is ~282 m, so the whole scene
+   is scaled by a building.
+
+Neither is reachable by the constants tuned here: removing a 120 px mass needs a
+kernel around 100 m+, which dissolves SF's actual hills. This is a distinct
+pipeline capability — urban massing removal — not a tuning problem.
+
+**Process lesson:** hillshade review is necessary but not sufficient. The suite
+should be judged on both sheets, since the top-down view is close to blind to
+exactly the vertical structures that matter most for printability.
+
 ## Using this going forward
 
 Any pipeline change should be validated by rerunning `python scripts/gallery.py`
