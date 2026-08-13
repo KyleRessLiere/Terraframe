@@ -20,7 +20,13 @@ import math
 from dataclasses import dataclass, field
 
 import numpy as np
-from scipy.ndimage import distance_transform_edt, gaussian_filter, map_coordinates
+from scipy.ndimage import (
+    distance_transform_edt,
+    gaussian_filter,
+    label,
+    map_coordinates,
+    median_filter,
+)
 
 from .tiles import (
     TILE_SIZE,
@@ -32,18 +38,27 @@ from .tiles import (
 )
 
 __all__ = [
+    "DESPIKE_THRESHOLD",
+    "DESPIKE_WINDOW_PX",
     "EARTH_RADIUS_M",
+    "MAX_SPIKE_CLUSTER_PX",
+    "SMOOTH_GROUND_METERS",
+    "SMOOTH_SIGMA_MAX",
+    "SMOOTH_SIGMA_MIN",
     "Heightmap",
+    "auto_smooth_sigma",
     "bounds_to_bbox",
     "build_heightmap",
     "crop_bounds",
     "crop_to_bbox",
+    "despike",
     "exaggerate",
     "fill_nodata",
     "flatten_water",
     "ground_extent",
     "meters_per_pixel",
     "resample_to_meters",
+    "smooth",
     "stitch",
     "tile_origin",
 ]
@@ -56,6 +71,30 @@ NODATA_FLOOR_M = -32000.0
 
 #: Pixel-boundary tolerance used when rounding crop windows outward.
 _PIXEL_EPS = 1e-6
+
+# --- Cleanup tuning ---------------------------------------------------------
+# Hand-tunable style constants, kept together rather than buried in the calls.
+
+#: Neighbourhood the spike test compares each pixel against.
+DESPIKE_WINDOW_PX = 5
+
+#: Deviation from the local median, in interquartile ranges, that counts as a
+#: spike. Lower removes more.
+DESPIKE_THRESHOLD = 3.0
+
+#: Largest connected blob of flagged pixels still treated as a spike. Above
+#: this it is assumed to be real terrain -- a ridgeline, not a needle.
+MAX_SPIKE_CLUSTER_PX = 4
+
+#: Ground radius the automatic smoothing aims for, in metres. Roughly the
+#: scale of the trees and buildings that need to come off.
+SMOOTH_GROUND_METERS = 20.0
+
+#: Sigma floor: below this, blurring does nothing useful.
+SMOOTH_SIGMA_MIN = 0.5
+
+#: Sigma ceiling: above this, real landforms start dissolving.
+SMOOTH_SIGMA_MAX = 4.0
 
 
 @dataclass(frozen=True)
@@ -476,6 +515,117 @@ def fill_nodata(arr: np.ndarray, sigma: float = 2.0) -> np.ndarray:
     return blended.astype(np.float32, copy=False)
 
 
+def despike(arr: np.ndarray, threshold: float = DESPIKE_THRESHOLD) -> np.ndarray:
+    """Replace isolated outlier pixels with their local median.
+
+    Each pixel is compared against a 5x5 median of its neighbourhood. Where the
+    difference exceeds ``threshold`` times the global interquartile range of
+    those differences, the pixel is treated as a spike and replaced.
+
+    Ridgelines survive this. A one-pixel-wide ridge deviates from its own 5x5
+    median just as hard as a needle does -- only 5 of 25 window samples sit on
+    the crest, so the median falls off it -- which is exactly how a naive
+    median test erodes real terrain. So flagged pixels are additionally
+    required to be *isolated*: candidates are grouped into connected
+    components, and anything larger than :data:`MAX_SPIKE_CLUSTER_PX` is left
+    alone. A ridge is one long component; a needle is one pixel.
+
+    Args:
+        arr: 2D elevation array, already free of nodata.
+        threshold: Multiples of the interquartile range beyond which a
+            deviation counts as a spike. Lower removes more.
+
+    Returns:
+        A float32 array with isolated spikes flattened to local median.
+    """
+    data = np.asarray(arr, dtype=np.float32)
+    if data.ndim != 2:
+        raise ValueError(f"expected a 2D array, got shape {data.shape}")
+    if threshold <= 0.0:
+        raise ValueError(f"threshold must be positive, got {threshold}")
+    if data.size == 0:
+        return data.copy()
+
+    local_median = median_filter(data, size=DESPIKE_WINDOW_PX, mode="reflect")
+    residual = data - local_median
+
+    q25, q75 = np.percentile(residual, [25.0, 75.0])
+    scale = float(q75 - q25)
+    if scale <= 0.0:
+        # Degenerate: the residual field is flat enough that three quarters of
+        # it sits at one value (a synthetic ramp, say). Fall back to standard
+        # deviation, which the spikes themselves inflate, so they still stand
+        # out without every rounding wobble counting as one.
+        scale = float(residual.std())
+    if scale <= 0.0:
+        return data.copy()  # perfectly uniform; nothing can be an outlier
+
+    candidates = np.abs(residual) > threshold * scale
+    if not candidates.any():
+        return data.copy()
+
+    # Keep only isolated clusters: connected ridgelines are real terrain.
+    labels, count = label(candidates, structure=np.ones((3, 3), dtype=int))
+    if count:
+        sizes = np.bincount(labels.ravel())
+        isolated = sizes <= MAX_SPIKE_CLUSTER_PX
+        # Label 0 is background, whose bincount entry is meaningless here; it
+        # would otherwise compare as "small" and flag the entire image.
+        isolated[0] = False
+        candidates = isolated[labels]
+
+    out = data.copy()
+    out[candidates] = local_median[candidates]
+    return out
+
+
+def auto_smooth_sigma(meters_per_px: float) -> float:
+    """Pick a Gaussian sigma giving a consistent ground smoothing radius.
+
+    Targets :data:`SMOOTH_GROUND_METERS` of blur regardless of zoom, so the
+    same bbox cleans up the same way whether it was sampled coarsely or finely.
+
+    Args:
+        meters_per_px: Ground resolution of the grid to be smoothed.
+
+    Returns:
+        Sigma in pixels, clamped to
+        ``[SMOOTH_SIGMA_MIN, SMOOTH_SIGMA_MAX]``.
+    """
+    if meters_per_px <= 0.0:
+        raise ValueError(f"meters_per_px must be positive, got {meters_per_px}")
+    ideal = SMOOTH_GROUND_METERS / meters_per_px
+    return float(np.clip(ideal, SMOOTH_SIGMA_MIN, SMOOTH_SIGMA_MAX))
+
+
+def smooth(arr: np.ndarray, sigma: float) -> np.ndarray:
+    """Gaussian-blur the terrain to take surface clutter down.
+
+    Trees and buildings sit on top of the ground as high-frequency texture.
+    Blurring before exaggeration means the vertical stretch amplifies landforms
+    rather than clutter.
+
+    Args:
+        arr: 2D elevation array.
+        sigma: Blur radius in pixels. Zero or negative is a no-op.
+
+    Returns:
+        A float32 array.
+    """
+    data = np.asarray(arr, dtype=np.float32)
+    if data.ndim != 2:
+        raise ValueError(f"expected a 2D array, got shape {data.shape}")
+    if sigma <= 0.0 or data.size == 0:
+        return data.copy()
+
+    return gaussian_filter(data, sigma=sigma).astype(np.float32, copy=False)
+
+
+#: Module-level handle so :func:`build_heightmap` can take a ``despike`` flag
+#: parameter without shadowing the function it needs to call.
+_despike = despike
+
+
 def flatten_water(arr: np.ndarray, level: float | None = None) -> np.ndarray:
     """Clamp everything below ``level`` up to it, so water prints flat.
 
@@ -539,13 +689,19 @@ def build_heightmap(
     target_px: int = 800,
     exaggeration: float = 1.0,
     flatten_water_level: float | str | None = "auto",
+    smooth_px: float | str | None = "auto",
+    despike: bool = True,
+    despike_threshold: float = DESPIKE_THRESHOLD,
     cache_dir: str = ".tile_cache",
 ) -> Heightmap:
     """Build a finished, print-ready heightmap for a bounding box.
 
     Runs the whole pipeline: zoom selection, tile fetch (with a one-tile
     margin), stitch, crop, resample to square ground pixels, nodata fill,
-    water flattening, and vertical exaggeration.
+    despike, smooth, water flattening, and vertical exaggeration.
+
+    Cleanup runs *before* exaggeration on purpose, so the vertical stretch
+    amplifies landforms rather than tree canopy and outlier needles.
 
     Args:
         south: Southern latitude bound, in degrees.
@@ -556,6 +712,11 @@ def build_heightmap(
         exaggeration: Vertical relief multiplier.
         flatten_water_level: ``"auto"`` clamps to sea level when the bbox dips
             below it, a number clamps to that height, and ``None`` skips it.
+        smooth_px: Gaussian sigma in pixels, ``"auto"`` to derive one from the
+            grid's ground resolution, or ``None``/``0`` for no smoothing.
+        despike: Whether to remove isolated outlier pixels.
+        despike_threshold: Interquartile ranges beyond which a deviation from
+            the local median counts as a spike.
         cache_dir: Directory for the raw tile PNG cache.
 
     Returns:
@@ -582,6 +743,17 @@ def build_heightmap(
     # sampling can smear a hole by at most one pixel first.
     cleaned = fill_nodata(resampled)
 
+    width_m, _ = ground_extent(*covered)
+    meters_per_px = width_m / resampled.shape[1]
+
+    if despike:
+        cleaned = _despike(cleaned, despike_threshold)
+
+    sigma = auto_smooth_sigma(meters_per_px) if smooth_px == "auto" else float(smooth_px or 0.0)
+    # Always call through the stage, even at sigma 0: it is a pipeline step,
+    # and a no-op smooth is cheaper to reason about than a conditional one.
+    cleaned = smooth(cleaned, sigma)
+
     if flatten_water_level == "auto":
         cleaned = flatten_water(cleaned, None)
     elif flatten_water_level is not None:
@@ -589,10 +761,9 @@ def build_heightmap(
 
     final = exaggerate(cleaned, exaggeration)
 
-    width_m, _ = ground_extent(*covered)
     return Heightmap(
         elevation=final,
-        meters_per_px=width_m / final.shape[1],
+        meters_per_px=meters_per_px,
         bbox=covered,
         zoom=zoom,
         exaggeration=exaggeration,

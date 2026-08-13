@@ -142,6 +142,24 @@ def render(heightmap: Heightmap, z_factor: float = 1.5) -> Image.Image:
     return Image.fromarray((lit * 255.0 + 0.5).astype(np.uint8), mode="RGB")
 
 
+def _parse_smooth(text: str) -> float | str | None:
+    """Parse ``--smooth``: ``auto``, ``none``, or a sigma in pixels."""
+    lowered = text.strip().lower()
+    if lowered == "auto":
+        return "auto"
+    if lowered in {"none", "off"}:
+        return None
+    try:
+        value = float(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"--smooth takes a number, 'auto', or 'none', got {text!r}"
+        ) from exc
+    if value < 0.0:
+        raise argparse.ArgumentTypeError(f"--smooth must be non-negative, got {value}")
+    return value
+
+
 def parse_bbox(text: str) -> tuple[float, float, float, float]:
     """Parse a ``S,W,N,E`` string into a bbox tuple."""
     parts = text.split(",")
@@ -179,6 +197,22 @@ def main(argv: list[str] | None = None) -> int:
         "--target-px", type=int, default=800, help="pixel span of the bbox's longer side"
     )
     parser.add_argument(
+        "--smooth",
+        type=_parse_smooth,
+        default="auto",
+        metavar="SIGMA",
+        help=(
+            "gaussian smoothing radius in pixels, 'auto' to scale it to the "
+            "grid's resolution, or 'none' (default: auto)"
+        ),
+    )
+    parser.add_argument(
+        "--despike",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="remove isolated outlier pixels before smoothing (default: enabled)",
+    )
+    parser.add_argument(
         "--z-factor",
         type=float,
         default=1.5,
@@ -199,6 +233,8 @@ def main(argv: list[str] | None = None) -> int:
         east,
         target_px=args.target_px,
         exaggeration=args.exaggeration,
+        smooth_px=args.smooth,
+        despike=args.despike,
     )
 
     elevation = heightmap.elevation

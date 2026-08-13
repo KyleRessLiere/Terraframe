@@ -85,7 +85,48 @@ hm.size_meters     # (30510.0, 22250.0)
 ```
 
 The pipeline is zoom pick → fetch (with margin) → `stitch` → `crop_to_bbox` →
-`resample_to_meters` → `fill_nodata` → `flatten_water` → `exaggerate`.
+`resample_to_meters` → `fill_nodata` → `despike` → `smooth` → `flatten_water` →
+`exaggerate`.
+
+## Cleanup
+
+Real-world flat terrain is noisy: tree canopy and buildings sit on top of the
+ground as high-frequency texture, and exaggeration turns that into a lumpy,
+spiky print. Two stages run **before** exaggeration, so the vertical stretch
+amplifies landforms rather than clutter.
+
+`despike` compares each pixel to a 5×5 local median and replaces it where the
+difference exceeds `DESPIKE_THRESHOLD` interquartile ranges. On its own that
+test also erodes ridgelines — a one-pixel crest deviates from its own median
+just as hard as a needle does, since only 5 of 25 window samples sit on it. So
+flagged pixels must additionally be **isolated**: candidates are grouped into
+connected components (8-way), and anything larger than `MAX_SPIKE_CLUSTER_PX`
+is left alone. A ridge is one long component; a needle is one pixel.
+
+`smooth` is a Gaussian blur. `--smooth auto` picks sigma from the grid's
+resolution to give a constant ~`SMOOTH_GROUND_METERS` of ground blur regardless
+of zoom, clamped to `[SMOOTH_SIGMA_MIN, SMOOTH_SIGMA_MAX]`.
+
+Measured on flat suburban San Jose (15.2 m/px, 58 m of relief):
+
+| stage | relief | roughness |
+| --- | --- | --- |
+| raw | 58.0 m | 0.384 |
+| despiked | 58.0 m | 0.383 |
+| despiked + smoothed | 55.8 m | 0.229 |
+
+40% less roughness for 4% of the relief. Note despiking alone barely moves the
+needle at this resolution — Terrarium has few isolated outliers, and the
+suburban clutter is broad rather than spiky, so smoothing does the real work.
+Despiking earns its place on noisier sources (USGS) and at finer zooms.
+
+```bash
+terrframe --bbox 37.30,-121.98,37.38,-121.86 -o suburb.stl \
+          --smooth 2.5 --no-despike --despike-threshold 4.0
+```
+
+Both flags exist on `scripts/preview.py` too, so you can tune them against a
+picture before committing to a print.
 
 ### On projections
 

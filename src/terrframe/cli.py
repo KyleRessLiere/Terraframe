@@ -12,7 +12,13 @@ from pathlib import Path
 
 import numpy as np
 
-from .heightmap import Heightmap, build_heightmap, exaggerate, ground_extent
+from .heightmap import (
+    DESPIKE_THRESHOLD,
+    Heightmap,
+    build_heightmap,
+    exaggerate,
+    ground_extent,
+)
 from .mesh import auto_exaggeration, export, heightmap_to_mesh
 
 __all__ = ["main"]
@@ -71,6 +77,24 @@ def _parse_water(text: str) -> float | str | None:
         ) from exc
 
 
+def _parse_smooth(text: str) -> float | str | None:
+    """Parse ``--smooth``: ``auto``, ``none``, or a sigma in pixels."""
+    lowered = text.strip().lower()
+    if lowered == "auto":
+        return "auto"
+    if lowered in {"none", "off"}:
+        return None
+    try:
+        value = float(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"--smooth takes a number, 'auto', or 'none', got {text!r}"
+        ) from exc
+    if value < 0.0:
+        raise argparse.ArgumentTypeError(f"--smooth must be non-negative, got {value}")
+    return value
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="terrframe",
@@ -113,6 +137,29 @@ def _build_parser() -> argparse.ArgumentParser:
         default="auto",
         metavar="LEVEL",
         help="flatten water to this elevation, 'auto' for sea level, or 'none' (default: auto)",
+    )
+    parser.add_argument(
+        "--smooth",
+        type=_parse_smooth,
+        default="auto",
+        metavar="SIGMA",
+        help=(
+            "gaussian smoothing radius in pixels, 'auto' to scale it to the "
+            "grid's resolution, or 'none' (default: auto)"
+        ),
+    )
+    parser.add_argument(
+        "--despike",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="remove isolated outlier pixels before smoothing (default: enabled)",
+    )
+    parser.add_argument(
+        "--despike-threshold",
+        type=float,
+        default=DESPIKE_THRESHOLD,
+        metavar="IQR",
+        help=f"spike sensitivity in interquartile ranges (default: {DESPIKE_THRESHOLD})",
     )
     parser.add_argument(
         "--target-px",
@@ -174,6 +221,9 @@ def main(argv: list[str] | None = None) -> int:
             target_px=args.target_px,
             exaggeration=1.0,
             flatten_water_level=args.flatten_water,
+            smooth_px=args.smooth,
+            despike=args.despike,
+            despike_threshold=args.despike_threshold,
         )
         heightmap, factor = _resolve_exaggeration(heightmap, args.exaggeration)
 

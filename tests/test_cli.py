@@ -192,6 +192,73 @@ def test_flatten_water_none_is_honoured(stub_tiles: None, tmp_path: Path) -> Non
     assert seen["flatten_water_level"] is None
 
 
+def test_parse_smooth_modes() -> None:
+    assert cli._parse_smooth("auto") == "auto"
+    assert cli._parse_smooth("none") is None
+    assert cli._parse_smooth("off") is None
+    assert cli._parse_smooth("2.5") == 2.5
+    assert cli._parse_smooth("0") == 0.0
+    for bad in ["-1", "blurry"]:
+        with pytest.raises(Exception):
+            cli._parse_smooth(bad)
+
+
+def test_cleanup_flags_reach_the_pipeline(stub_tiles: None, tmp_path: Path) -> None:
+    """--smooth and --no-despike are forwarded, not silently dropped."""
+    seen: dict[str, object] = {}
+    real = cli.build_heightmap
+
+    def _spy(*args: object, **kwargs: object) -> object:
+        seen.update(kwargs)
+        return real(*args, **kwargs)
+
+    cli.build_heightmap = _spy  # type: ignore[assignment]
+    try:
+        cli.main(
+            [
+                "--bbox", BBOX_ARG,
+                "-o", str(tmp_path / "m.stl"),
+                "--smooth", "2.5",
+                "--no-despike",
+                "--despike-threshold", "4.5",
+            ]
+        )
+    finally:
+        cli.build_heightmap = real  # type: ignore[assignment]
+
+    assert seen["smooth_px"] == 2.5
+    assert seen["despike"] is False
+    assert seen["despike_threshold"] == 4.5
+
+
+def test_defaults_enable_cleanup(stub_tiles: None, tmp_path: Path) -> None:
+    seen: dict[str, object] = {}
+    real = cli.build_heightmap
+
+    def _spy(*args: object, **kwargs: object) -> object:
+        seen.update(kwargs)
+        return real(*args, **kwargs)
+
+    cli.build_heightmap = _spy  # type: ignore[assignment]
+    try:
+        cli.main(["--bbox", BBOX_ARG, "-o", str(tmp_path / "m.stl")])
+    finally:
+        cli.build_heightmap = real  # type: ignore[assignment]
+
+    assert seen["smooth_px"] == "auto"
+    assert seen["despike"] is True
+
+
+def test_smoothing_produces_a_calmer_model(stub_tiles: None, tmp_path: Path) -> None:
+    """Heavier smoothing means less surface area on the printed terrain."""
+    rough = tmp_path / "rough.stl"
+    calm = tmp_path / "calm.stl"
+    cli.main(["--bbox", BBOX_ARG, "-o", str(rough), "--smooth", "none", "--no-despike"])
+    cli.main(["--bbox", BBOX_ARG, "-o", str(calm), "--smooth", "4"])
+
+    assert trimesh.load(calm).area < trimesh.load(rough).area
+
+
 def test_bad_bbox_exits_with_usage_error(tmp_path: Path) -> None:
     with pytest.raises(SystemExit) as exc:
         cli.main(["--bbox", "48,-122,47,-121", "-o", str(tmp_path / "m.stl")])
