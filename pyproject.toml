@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "terrframe"
+version = "0.1.0"
+description = "Convert a geographic bounding box into a 3D-printable STL terrain model"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Kyle RessLiere" }]
+dependencies = [
+    "numpy>=1.24",
+    "pillow>=10.0",
+    "requests>=2.31",
+    "scipy>=1.11",
+    "pyproj>=3.6",
+    "trimesh>=4.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+terrframe = "terrframe.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "network: test requires live network access (deselect with '-m \"not network\"')",
+]
