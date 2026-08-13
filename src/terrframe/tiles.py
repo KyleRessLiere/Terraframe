@@ -31,6 +31,8 @@ __all__ = [
     "tiles_for_bbox",
     "fetch_tile",
     "zoom_for_bbox",
+    "mercator_x_norm",
+    "mercator_y_norm",
 ]
 
 #: Edge length in pixels of a single tile.
@@ -195,10 +197,37 @@ def zoom_for_bbox(
     return int(_clamp(round(zoom), MIN_ZOOM, MAX_ZOOM))
 
 
-def _mercator_y(lat: float) -> float:
-    """Normalised Web Mercator y in ``[0, 1]`` (0 at the north edge)."""
+def mercator_y_norm(lat: float) -> float:
+    """Normalised Web Mercator y in ``[0, 1]`` (0 at the north edge).
+
+    Multiply by ``TILE_SIZE * 2 ** zoom`` to get a global pixel row.
+
+    Args:
+        lat: Latitude in degrees, clamped to the Web Mercator limits.
+
+    Returns:
+        Position down the projected world, 0 at the north edge and 1 at the south.
+    """
     lat = _clamp(lat, -MAX_MERCATOR_LAT, MAX_MERCATOR_LAT)
     return (1.0 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2.0
+
+
+def mercator_x_norm(lon: float) -> float:
+    """Normalised Web Mercator x in ``[0, 1]`` (0 at longitude -180).
+
+    Multiply by ``TILE_SIZE * 2 ** zoom`` to get a global pixel column.
+
+    Args:
+        lon: Longitude in degrees.
+
+    Returns:
+        Position across the projected world, 0 at the west edge and 1 at the east.
+    """
+    return (lon + 180.0) / 360.0
+
+
+#: Backwards-compatible alias for the pre-public spelling.
+_mercator_y = mercator_y_norm
 
 
 def _cache_path(x: int, y: int, zoom: int, cache_dir: str | os.PathLike[str]) -> Path:
