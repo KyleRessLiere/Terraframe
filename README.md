@@ -128,6 +128,32 @@ terrframe --bbox 37.30,-121.98,37.38,-121.86 -o suburb.stl \
 Both flags exist on `scripts/preview.py` too, so you can tune them against a
 picture before committing to a print.
 
+## Batch runs
+
+Tuning means rendering the same site at several settings and comparing.
+`scripts/batch.py` does that and files each sweep into its own timestamped
+directory, so runs stay comparable after the constants change.
+
+```bash
+python scripts/batch.py                      # every preset
+python scripts/batch.py --preset tahoe
+python scripts/batch.py --bbox 38.85,-120.25,39.35,-119.85 \
+    --smooth 0,1,2 --exaggeration 2 --name tahoe-x2 --label tuning
+```
+
+```
+runs/20260813-135640/
+  manifest.json
+  stoneybrooke/{smooth1..4}.png  _contact.png
+  tahoe/{smooth0..2}.png         _contact.png
+```
+
+`_contact.png` lays the sweep out side by side. `manifest.json` records the
+timestamp, git commit, exact command, and per-frame measurements (zoom,
+m/px, relief, roughness, and roughness against an uncleaned baseline) — enough
+to compare two runs without reopening the images. Run directories never
+collide and are gitignored.
+
 ### On projections
 
 Web Mercator is **conformal**: it already stretches the y axis by exactly

@@ -11,6 +11,8 @@ venv/
 # terrframe
 .tile_cache/
 *.stl
+*.3mf
+runs/
 
 # Editors / OS
 .vscode/
