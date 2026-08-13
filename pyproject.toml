@@ -17,6 +17,10 @@ dependencies = [
     "scipy>=1.11",
     "pyproj>=3.6",
     "trimesh>=4.0",
+    # trimesh's 3MF exporter is a lazy import; without these, `-o out.3mf`
+    # fails at write time rather than at install time.
+    "networkx>=3.0",
+    "lxml>=4.9",
 ]
 
 [project.optional-dependencies]

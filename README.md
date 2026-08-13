@@ -4,15 +4,32 @@ Turn a geographic bounding box into a 3D-printable STL terrain model.
 
 ## Status
 
-Early. The elevation tile layer is done; everything downstream is a stub.
+Working end to end: a bounding box in, a printable STL out.
 
 | Stage | Module | State |
 | --- | --- | --- |
 | Elevation tiles | `terrframe.tiles` | ✅ implemented |
 | Heightmap stitch / crop / resample | `terrframe.heightmap` | ✅ implemented |
 | Preview renderer | `scripts/preview.py` | ✅ implemented |
-| Mesh generation + STL export | `terrframe.mesh` | 🚧 stub |
-| CLI | `terrframe.cli` | 🚧 stub |
+| Mesh generation + STL/3MF export | `terrframe.mesh` | ✅ implemented |
+| CLI | `terrframe.cli` | ✅ implemented |
+
+## Quick start
+
+```bash
+terrframe --bbox 38.85,-120.25,39.35,-119.85 -o tahoe.stl
+```
+
+```
+auto exaggeration: x3.49 (1785 m relief over 34.6 km)
+wrote        tahoe.stl
+size         200.0 x 322.3 x 42.1 mm
+geometry     550,478 vertices, 1,100,952 faces
+elevation    1528 to 3313 m
+exaggeration x3.49
+scale        59.3 m/px, zoom 11
+watertight   yes
+```
 
 ## Install
 
@@ -98,6 +115,45 @@ python scripts/preview.py --bbox 46.75,-121.95,46.95,-121.55 --exaggeration 1.5 
 Renders a north-west-lit hillshade blended with a hypsometric tint. Flattened
 water is drawn as water rather than as the bottom of the land ramp. `--z-factor`
 emphasises the shading without touching the data.
+
+## Meshing
+
+```python
+from terrframe.heightmap import build_heightmap
+from terrframe.mesh import heightmap_to_mesh, export
+
+hm = build_heightmap(38.85, -120.25, 39.35, -119.85, exaggeration=3.5)
+mesh = heightmap_to_mesh(hm, width_mm=200.0, base_mm=6.0)
+export(mesh, "tahoe.stl")   # .stl (binary) or .3mf, by extension
+```
+
+The solid is a terrain surface on top, four vertical skirt walls, and a flat
+bottom at `z = 0`, with the lowest valley floor sitting at `z = base_mm`.
+
+**Watertightness comes from construction, not repair.** One vertex array and
+one face array build a single `Trimesh`; the walls reuse the terrain's own edge
+vertices, so there is nothing to weld. No boolean unions, no `trimesh.repair`,
+and `process=False` so trimesh cannot silently "fix" anything behind the checks.
+`heightmap_to_mesh` raises with the open-edge count rather than returning a mesh
+that fails `is_watertight` or `is_winding_consistent`.
+
+Vertical scale derives from `hm.meters_per_px`, so the model is geometrically
+truthful — including any exaggeration baked in upstream. Past `max_vertices`
+(default 4M) the grid is decimated with a bilinear zoom; footprint and vertical
+scale are unaffected, because both are pinned to the original ground width.
+
+### Auto exaggeration
+
+`--exaggeration auto` targets printed relief at `TARGET_RELIEF_RATIO` (0.18) of
+the print width, clamped to 1.0–5.0:
+
+```
+factor = clamp(0.18 * width_m / relief_m, 1.0, 5.0)
+```
+
+Flat country gets pushed up; terrain already steeper than 18% of its own width
+prints as-is. The constants are module-level in `mesh.py` and meant to be tuned
+by hand.
 
 ## Tests
 
