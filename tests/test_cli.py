@@ -245,7 +245,7 @@ def test_defaults_enable_cleanup(stub_tiles: None, tmp_path: Path) -> None:
     finally:
         cli.build_heightmap = real  # type: ignore[assignment]
 
-    assert seen["smooth_px"] == "auto"
+    assert seen["smooth_px"] is None, "blur is off by default; removal declutters"
     assert seen["despike"] is True
 
 

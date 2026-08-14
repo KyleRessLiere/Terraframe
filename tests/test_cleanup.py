@@ -360,10 +360,22 @@ def test_smooth_px_none_disables_smoothing(stub_tiles: None) -> None:
     assert _gradient_roughness(blurred.elevation) < _gradient_roughness(sharp.elevation)
 
 
+def test_smoothing_is_off_by_default(stub_tiles: None) -> None:
+    """Blur costs detail and buys nothing now that buildings are cut out."""
+    from terrframe.heightmap import PRINT_WIDTH_MM
+
+    default = build_heightmap(*BBOX)
+    unsmoothed = build_heightmap(*BBOX, smooth_px=None)
+    np.testing.assert_array_equal(default.elevation, unsmoothed.elevation)
+
+
 def test_auto_smoothing_matches_the_grids_resolution(stub_tiles: None) -> None:
-    """'auto' resolves against the finished grid's own metres-per-pixel."""
-    result = build_heightmap(*BBOX)
-    expected_sigma = auto_smooth_sigma(result.meters_per_px)
+    """'auto' still resolves against the finished grid, when asked for."""
+    from terrframe.heightmap import PRINT_WIDTH_MM
+
+    result = build_heightmap(*BBOX, smooth_px="auto")
+    mm_per_px = PRINT_WIDTH_MM / max(result.elevation.shape[1] - 1, 1)
+    expected_sigma = auto_smooth_sigma(result.meters_per_px, mm_per_px)
 
     explicit = build_heightmap(*BBOX, smooth_px=expected_sigma)
     np.testing.assert_allclose(result.elevation, explicit.elevation, rtol=1e-6)

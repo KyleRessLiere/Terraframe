@@ -144,8 +144,10 @@ def test_measure_reports_true_relief_not_exaggerated(stub_tiles: None) -> None:
 
     assert tall_m["relief_m"] == pytest.approx(plain_m["relief_m"], rel=1e-3)
     assert tall_m["printed_relief_mm"] == pytest.approx(3.0 * plain_m["printed_relief_mm"], rel=1e-3)
+    # Both figures are rounded to 2dp independently before storage, so they can
+    # disagree in the last digit; the tolerance is that rounding, not slack.
     assert tall_m["printed_relief_pct_of_width"] == pytest.approx(
-        100.0 * tall_m["printed_relief_mm"] / gallery.REFERENCE_WIDTH_MM
+        100.0 * tall_m["printed_relief_mm"] / gallery.REFERENCE_WIDTH_MM, abs=0.01
     )
 
 

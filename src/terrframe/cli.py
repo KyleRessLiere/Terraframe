@@ -151,11 +151,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--smooth",
         type=_parse_smooth,
-        default="auto",
+        default=None,
         metavar="SIGMA",
         help=(
-            "gaussian smoothing radius in pixels, 'auto' to scale it to the "
-            "grid's resolution, or 'none' (default: auto)"
+            "gaussian smoothing radius in pixels, or 'auto' to scale it to the "
+            "grid's resolution (default: none -- building removal declutters "
+            "better, and blurring only costs detail)"
         ),
     )
     parser.add_argument(

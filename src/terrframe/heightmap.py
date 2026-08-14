@@ -659,6 +659,14 @@ def smooth(arr: np.ndarray, sigma: float) -> np.ndarray:
     Blurring before exaggeration means the vertical stretch amplifies landforms
     rather than clutter.
 
+    **Off by default.** This was tuned before :func:`terrframe.features.
+    remove_buildings` existed, when blurring was the only way to get built-up
+    clutter off the terrain. Now that footprints are cut out directly, blurring
+    costs detail without buying anything: compared side by side on DC core,
+    Stoneybrooke, Rainier and Tahoe, removal-without-blur beat
+    removal-with-blur every time, and blur alone never matched removal. It is
+    kept as an opt-in for sources noisier than anything tested here.
+
     Args:
         arr: 2D elevation array.
         sigma: Blur radius in pixels. Zero or negative is a no-op.
@@ -743,7 +751,7 @@ def build_heightmap(
     target_px: int = 800,
     exaggeration: float = 1.0,
     flatten_water_level: float | str | None = "auto",
-    smooth_px: float | str | None = "auto",
+    smooth_px: float | str | None = None,
     despike: bool = True,
     despike_threshold: float = DESPIKE_THRESHOLD,
     cache_dir: str = ".tile_cache",
@@ -769,6 +777,7 @@ def build_heightmap(
             below it, a number clamps to that height, and ``None`` skips it.
         smooth_px: Gaussian sigma in pixels, ``"auto"`` to derive one from the
             grid's ground resolution, or ``None``/``0`` for no smoothing.
+            Defaults to off -- see :func:`smooth` for why.
         despike: Whether to remove isolated outlier pixels.
         despike_threshold: Interquartile ranges beyond which a deviation from
             the local median counts as a spike.
