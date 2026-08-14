@@ -234,6 +234,37 @@ def test_auto_smooth_sigma_targets_a_constant_ground_radius() -> None:
         assert sigma * mpp == pytest.approx(SMOOTH_GROUND_METERS)
 
 
+def test_print_cap_only_bites_on_tight_framings() -> None:
+    """Blur is aimed in ground metres but capped in printed millimetres.
+
+    Without the cap the same 40 m target costs 0.29 mm of print on a 28 km
+    bbox and 1.32 mm on a 6 km one, so tight framings came out blank while
+    wide ones were untouched. The cap must change the former and not the
+    latter.
+    """
+    from terrframe.heightmap import PRINT_WIDTH_MM, SMOOTH_PRINT_MM_MAX
+
+    # A tight framing: fine ground resolution, so the ground target overshoots.
+    tight_mpp, tight_cols = 7.4, 817
+    tight_mm_px = PRINT_WIDTH_MM / (tight_cols - 1)
+    uncapped = auto_smooth_sigma(tight_mpp)
+    capped = auto_smooth_sigma(tight_mpp, tight_mm_px)
+    assert capped < uncapped
+    assert capped * tight_mm_px == pytest.approx(SMOOTH_PRINT_MM_MAX, rel=1e-6)
+
+    # A wide framing: the ground target already fits inside the print budget.
+    wide_mpp, wide_cols = 29.7, 933
+    wide_mm_px = PRINT_WIDTH_MM / (wide_cols - 1)
+    assert auto_smooth_sigma(wide_mpp, wide_mm_px) == pytest.approx(
+        auto_smooth_sigma(wide_mpp)
+    ), "the cap must not touch framings that were already within budget"
+
+
+def test_print_cap_rejects_bad_scale() -> None:
+    with pytest.raises(ValueError):
+        auto_smooth_sigma(10.0, 0.0)
+
+
 def test_auto_smooth_sigma_is_monotonic() -> None:
     resolutions = np.linspace(5.0, 150.0, 30)
     sigmas = [auto_smooth_sigma(float(m)) for m in resolutions]

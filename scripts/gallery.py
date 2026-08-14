@@ -33,6 +33,7 @@ from terrframe.heightmap import (  # noqa: E402
     DESPIKE_THRESHOLD,
     DESPIKE_WINDOW_PX,
     MAX_SPIKE_CLUSTER_PX,
+    PRINT_WIDTH_MM,
     auto_smooth_sigma,
     build_heightmap,
     exaggerate,
@@ -189,7 +190,16 @@ def render_scene(
         exaggeration=1.0,
         smooth_px=("auto" if forced_sigma is None else (forced_sigma or None)),
     )
-    sigma = auto_smooth_sigma(heightmap.meters_per_px) if forced_sigma is None else forced_sigma
+    # Mirror what build_heightmap actually used, print cap included, or the
+    # reported sigma silently drifts from the one that shaped the grid.
+    sigma = (
+        auto_smooth_sigma(
+            heightmap.meters_per_px,
+            PRINT_WIDTH_MM / max(heightmap.elevation.shape[1] - 1, 1),
+        )
+        if forced_sigma is None
+        else forced_sigma
+    )
 
     if "exaggeration" in overrides:
         factor = float(overrides["exaggeration"])

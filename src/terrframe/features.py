@@ -100,7 +100,13 @@ BUILDING_DILATION_PX = 1
 WATER_DEPTH_MM = 1.0
 
 #: Width of the raised bead outlining every water body, in millimetres.
-SHORELINE_WIDTH_MM = 0.5
+#:
+#: 0.5 mm was about two pixels on a production grid: one lit pixel and one
+#: shadowed one, which breaks into dashes under raking light and prints at the
+#: edge of what a nozzle resolves. The geometry was uniform either way -- every
+#: crown pixel measured exactly its nominal height -- but it did not read as a
+#: line. Widening costs nothing and makes it continuous.
+SHORELINE_WIDTH_MM = 1.5
 
 #: Height of that bead above local terrain, in millimetres.
 SHORELINE_HEIGHT_MM = 0.4

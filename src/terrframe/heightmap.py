@@ -92,6 +92,23 @@ MAX_SPIKE_CLUSTER_PX = 4
 #: scale of the trees and buildings that need to come off.
 SMOOTH_GROUND_METERS = 40.0
 
+#: Reference print width the millimetre-based constants assume, matching the
+#: CLI's default and :func:`terrframe.mesh.heightmap_to_mesh`.
+PRINT_WIDTH_MM = 200.0
+
+#: Ceiling on that blur expressed in printed millimetres.
+#:
+#: Clutter removal is a *ground*-scale job -- a tree is a tree regardless of
+#: framing -- but legibility is a *print*-scale one, and the print is always
+#: the same width. On a 28 km bbox 40 m of ground is 0.29 mm of print, which is
+#: nothing; on a 6 km bbox it is 1.32 mm, which erases the street grid, the
+#: Mall and the terraced riverbanks. Tight framings were being blurred roughly
+#: 4.5x harder than wide ones for no reason anyone chose.
+#:
+#: So the ground target still drives the blur, capped so it can never eat more
+#: than this much of the printed surface.
+SMOOTH_PRINT_MM_MAX = 0.5
+
 #: Sigma floor: below this, blurring does nothing useful.
 SMOOTH_SIGMA_MIN = 0.5
 
@@ -605,22 +622,33 @@ def despike(arr: np.ndarray, threshold: float = DESPIKE_THRESHOLD) -> np.ndarray
     return out
 
 
-def auto_smooth_sigma(meters_per_px: float) -> float:
-    """Pick a Gaussian sigma giving a consistent ground smoothing radius.
+def auto_smooth_sigma(meters_per_px: float, mm_per_px: float | None = None) -> float:
+    """Pick a Gaussian sigma that removes clutter without erasing the print.
 
-    Targets :data:`SMOOTH_GROUND_METERS` of blur regardless of zoom, so the
-    same bbox cleans up the same way whether it was sampled coarsely or finely.
+    The blur is aimed at :data:`SMOOTH_GROUND_METERS` -- clutter is a physical
+    size, so that target is in ground metres -- but capped at
+    :data:`SMOOTH_PRINT_MM_MAX` of the finished surface. Without the cap the
+    same 40 m target costs 0.29 mm of print on a wide framing and 1.32 mm on a
+    tight one, so tight framings came out blank while wide ones were untouched.
 
     Args:
         meters_per_px: Ground resolution of the grid to be smoothed.
+        mm_per_px: Printed millimetres per pixel. When omitted the print cap is
+            not applied, which is only correct if the caller has already sized
+            the blur itself.
 
     Returns:
-        Sigma in pixels, clamped to
-        ``[SMOOTH_SIGMA_MIN, SMOOTH_SIGMA_MAX]``.
+        Sigma in pixels, clamped to ``[SMOOTH_SIGMA_MIN, SMOOTH_SIGMA_MAX]``.
     """
     if meters_per_px <= 0.0:
         raise ValueError(f"meters_per_px must be positive, got {meters_per_px}")
+
     ideal = SMOOTH_GROUND_METERS / meters_per_px
+    if mm_per_px is not None:
+        if mm_per_px <= 0.0:
+            raise ValueError(f"mm_per_px must be positive, got {mm_per_px}")
+        ideal = min(ideal, SMOOTH_PRINT_MM_MAX / mm_per_px)
+
     return float(np.clip(ideal, SMOOTH_SIGMA_MIN, SMOOTH_SIGMA_MAX))
 
 
@@ -795,7 +823,14 @@ def build_heightmap(
     if despike:
         cleaned = _despike(cleaned, despike_threshold)
 
-    sigma = auto_smooth_sigma(meters_per_px) if smooth_px == "auto" else float(smooth_px or 0.0)
+    # The print is always PRINT_WIDTH_MM across, so pixels map to millimetres
+    # through the grid's own column count.
+    mm_per_px = PRINT_WIDTH_MM / max(resampled.shape[1] - 1, 1)
+    sigma = (
+        auto_smooth_sigma(meters_per_px, mm_per_px)
+        if smooth_px == "auto"
+        else float(smooth_px or 0.0)
+    )
     # Always call through the stage, even at sigma 0: it is a pipeline step,
     # and a no-op smooth is cheaper to reason about than a conditional one.
     cleaned = smooth(cleaned, sigma)
