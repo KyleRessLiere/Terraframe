@@ -16,6 +16,7 @@
     554
   ],
   "reference_width_mm": 200.0,
+  "style": "minimal",
   "scene": "sf_coast",
   "terrain": "coastline + ocean + city",
   "bbox": [

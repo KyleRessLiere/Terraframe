@@ -168,6 +168,23 @@ All of the tuning above was judged on hillshaded heightmaps. Rendering the
 **exported STLs** afterwards (`scripts/render3d.py`, see
 `gallery/contact_sheet_3d.png`) surfaced a defect that 2D review could not:
 
+> **CORRECTION (superseded by the OSM features work).** The conclusion below —
+> that sf_coast's spires are downtown high-rises — is **wrong**. Rasterising
+> OSM building footprints against the same grid shows the tall masses have
+> **0–1% footprint coverage**: they are not buildings. The 325.7 m maximum sits
+> at the northern grid edge, (37.85, −122.499), which is the **Marin Headlands**
+> across the Golden Gate, where terrain genuinely reaches ~300 m. A
+> before/after 3D render with building removal enabled leaves that ridge
+> untouched.
+>
+> What misled me: I compared the maximum against Mt Davidson (282 m), SF's high
+> point, without noticing the bbox extends north past the Golden Gate into
+> higher terrain. Building removal does help sf_coast — the peninsula surface
+> is visibly smoother — but it does not and should not touch those ridges.
+>
+> The original text is kept below because the *process* lesson stands: 2D
+> review is blind to vertical structure. The *diagnosis* did not.
+
 **sf_coast prints downtown's high-rises as spires.** Seen from directly above
 with a synthetic light, a 300 m tower is a small bright dot, indistinguishable
 from a crag. Seen in 3D at ×12.5 exaggeration it is an obvious fragile needle.

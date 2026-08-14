@@ -21,3 +21,6 @@ runs/
 .DS_Store
 Thumbs.db
 
+
+# OSM feature cache
+.osm_cache/

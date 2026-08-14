@@ -162,7 +162,13 @@ def render(heightmap: Heightmap, z_factor: float = 1.5) -> Image.Image:
     shade = hillshade(elevation, heightmap.meters_per_px, z_factor=z_factor)
     rgb = elevation_tint(elevation)
 
+    # An explicit mask from OSM stamping beats guessing from flatness: a city's
+    # water is hundreds of small polygons, none of which clears the area
+    # threshold alone, so detection would miss exactly the rivers that make a
+    # flat metro area legible.
     water = _water_mask(elevation, heightmap.exaggeration)
+    if heightmap.water_mask is not None:
+        water = water | np.asarray(heightmap.water_mask, dtype=bool)
     if water.any():
         rgb[water] = np.array(WATER_RGB, dtype=np.float32) / 255.0
 

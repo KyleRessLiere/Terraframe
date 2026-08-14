@@ -16,6 +16,7 @@
     939
   ],
   "reference_width_mm": 200.0,
+  "style": "minimal",
   "scene": "tahoe",
   "terrain": "alpine + big lake",
   "bbox": [

@@ -16,6 +16,7 @@
     1077
   ],
   "reference_width_mm": 200.0,
+  "style": "minimal",
   "scene": "stoneybrooke",
   "terrain": "flat suburb",
   "bbox": [

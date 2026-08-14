@@ -38,6 +38,11 @@ from terrframe.heightmap import (  # noqa: E402
     exaggerate,
     ground_extent,
 )
+from terrframe.features import (  # noqa: E402
+    apply_features,
+    fetch_osm_or_warn,
+    layers_for_style,
+)
 from terrframe.mesh import auto_exaggeration  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -61,6 +66,7 @@ class Scene:
     name: str
     bbox: tuple[float, float, float, float]
     terrain: str
+    style: str = "minimal"
 
 
 #: Frozen suite. Do not reorder or edit without regenerating the baseline.
@@ -70,6 +76,12 @@ SCENES: list[Scene] = [
     Scene("rainier", (46.75, -121.95, 46.95, -121.55), "single dramatic peak"),
     Scene("sf_coast", (37.70, -122.60, 37.85, -122.35), "coastline + ocean + city"),
     Scene("kansas", (38.80, -97.75, 39.00, -97.45), "near-zero relief, worst case"),
+    Scene(
+        "dc_natural",
+        (38.7800, -77.2000, 38.9900, -76.8800),
+        "flat metro, OSM water",
+        style="natural",
+    ),
 ]
 
 
@@ -195,10 +207,15 @@ def render_scene(
             requested_bbox=heightmap.requested_bbox,
         )
 
+    if scene.style != "minimal":
+        feature_set = fetch_osm_or_warn(scene.bbox, layers_for_style(scene.style, "off"))
+        heightmap = apply_features(heightmap, scene.style, feature_set)
+
     out_dir.mkdir(parents=True, exist_ok=True)
     preview.render(heightmap).save(out_dir / f"{scene.name}.png")
 
     metrics = measure(heightmap, factor, sigma)
+    metrics["style"] = scene.style
     metrics["scene"] = scene.name
     metrics["terrain"] = scene.terrain
     metrics["bbox"] = list(scene.bbox)

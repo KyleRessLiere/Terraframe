@@ -12,6 +12,15 @@ from pathlib import Path
 
 import numpy as np
 
+from .features import (
+    STYLES,
+    WATER_DEPTH_MM,
+    apply_features,
+    building_remover,
+    fetch_osm_or_warn,
+    layers_for_style,
+    should_remove_buildings,
+)
 from .heightmap import (
     DESPIKE_THRESHOLD,
     Heightmap,
@@ -162,6 +171,30 @@ def _build_parser() -> argparse.ArgumentParser:
         help=f"spike sensitivity in interquartile ranges (default: {DESPIKE_THRESHOLD})",
     )
     parser.add_argument(
+        "--style",
+        choices=STYLES,
+        default="minimal",
+        help=(
+            "minimal = terrain only; natural = + OSM water; detailed = + water "
+            "(roads/trails pending) (default: minimal)"
+        ),
+    )
+    parser.add_argument(
+        "--remove-buildings",
+        default="auto",
+        metavar="on|off|auto",
+        help=(
+            "cut OSM building footprints out of the terrain; auto enables it "
+            "when buildings exist and the source is not bare earth (default: auto)"
+        ),
+    )
+    parser.add_argument(
+        "--water-depth-mm",
+        type=float,
+        default=WATER_DEPTH_MM,
+        help=f"engrave depth for stamped water, in mm (default: {WATER_DEPTH_MM})",
+    )
+    parser.add_argument(
         "--target-px",
         type=int,
         default=800,
@@ -211,6 +244,20 @@ def main(argv: list[str] | None = None) -> int:
     south, west, north, east = args.bbox
 
     try:
+        # OSM first: building removal has to happen before despike/smooth so
+        # auto exaggeration sizes off cleaned ground, not off a rooftop.
+        wanted = layers_for_style(args.style, args.remove_buildings)
+        features = (
+            fetch_osm_or_warn((south, west, north, east), wanted) if wanted else None
+        )
+
+        buildings = features["buildings"] if features else []
+        # is_bare_earth is False for every source today; sources.py will supply
+        # the real answer once 3DEP routing lands.
+        removing = should_remove_buildings(args.remove_buildings, buildings, is_bare_earth=False)
+        if removing:
+            print(f"removing {len(buildings):,} building footprints", file=sys.stderr)
+
         # Always build unexaggerated first: 'auto' needs the true relief, and
         # applying the factor afterwards avoids a second fetch-and-resample.
         heightmap = build_heightmap(
@@ -224,8 +271,15 @@ def main(argv: list[str] | None = None) -> int:
             smooth_px=args.smooth,
             despike=args.despike,
             despike_threshold=args.despike_threshold,
+            pre_clean=building_remover(buildings) if removing else None,
         )
         heightmap, factor = _resolve_exaggeration(heightmap, args.exaggeration)
+
+        # Stamps go on after exaggeration, so their printed size is fixed.
+        if features is not None:
+            heightmap = apply_features(
+                heightmap, args.style, features, water_depth_mm=args.water_depth_mm
+            )
 
         mesh = heightmap_to_mesh(
             heightmap,

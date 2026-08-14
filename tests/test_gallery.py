@@ -41,7 +41,7 @@ def stub_tiles(monkeypatch: pytest.MonkeyPatch) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_scene_suite_is_the_documented_five() -> None:
+def test_scene_suite_is_the_documented_set() -> None:
     """The suite is a baseline; changing it silently invalidates comparisons."""
     assert [s.name for s in gallery.SCENES] == [
         "tahoe",
@@ -49,11 +49,18 @@ def test_scene_suite_is_the_documented_five() -> None:
         "rainier",
         "sf_coast",
         "kansas",
+        "dc_natural",
     ]
     for scene in gallery.SCENES:
         south, west, north, east = scene.bbox
         assert south < north and west < east
         assert scene.terrain
+        assert scene.style in {"minimal", "natural", "detailed"}
+
+    # dc_natural is the acceptance scene for water stamping: terrain alone
+    # renders it as anonymous texture.
+    dc = next(s for s in gallery.SCENES if s.name == "dc_natural")
+    assert dc.style == "natural"
 
 
 # ---------------------------------------------------------------------------

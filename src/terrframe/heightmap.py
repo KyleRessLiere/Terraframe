@@ -17,9 +17,11 @@ bbox, which Web Mercator does not handle at all.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
+from affine import Affine
 from scipy.ndimage import (
     distance_transform_edt,
     gaussian_filter,
@@ -109,6 +111,10 @@ class Heightmap:
         zoom: Source tile zoom level.
         exaggeration: Vertical factor already baked into ``elevation``.
         requested_bbox: The ``(south, west, north, east)`` originally asked for.
+        water_mask: Pixels stamped as water from OSM polygons, when features
+            were applied. Renderers should prefer this over guessing water from
+            flatness -- a city's water is many small polygons, each too small to
+            clear an area threshold on its own.
     """
 
     elevation: np.ndarray
@@ -117,11 +123,31 @@ class Heightmap:
     zoom: int
     exaggeration: float = 1.0
     requested_bbox: tuple[float, float, float, float] | None = field(default=None)
+    water_mask: np.ndarray | None = field(default=None)
 
     @property
     def shape(self) -> tuple[int, int]:
         """The elevation grid's ``(rows, cols)``."""
         return self.elevation.shape  # type: ignore[return-value]
+
+    @property
+    def transform(self) -> Affine:
+        """Affine mapping pixel coordinates to lon/lat.
+
+        The grid is equidistant in latitude and longitude across ``bbox`` (see
+        :func:`resample_to_meters`), so a plain north-up affine describes it
+        exactly. Rasterising OSM geometry against the grid needs this.
+        """
+        south, west, north, east = self.bbox
+        rows, cols = self.elevation.shape
+        return Affine(
+            (east - west) / cols,
+            0.0,
+            west,
+            0.0,
+            -(north - south) / rows,
+            north,
+        )
 
     @property
     def size_meters(self) -> tuple[float, float]:
@@ -693,6 +719,7 @@ def build_heightmap(
     despike: bool = True,
     despike_threshold: float = DESPIKE_THRESHOLD,
     cache_dir: str = ".tile_cache",
+    pre_clean: Callable[[Heightmap], np.ndarray] | None = None,
 ) -> Heightmap:
     """Build a finished, print-ready heightmap for a bounding box.
 
@@ -718,6 +745,11 @@ def build_heightmap(
         despike_threshold: Interquartile ranges beyond which a deviation from
             the local median counts as a spike.
         cache_dir: Directory for the raw tile PNG cache.
+        pre_clean: Optional hook run on the filled grid *before* despike and
+            smooth, receiving a provisional un-exaggerated :class:`Heightmap`
+            and returning a replacement elevation array. Building removal uses
+            this, so exaggeration is later sized off cleaned ground rather than
+            off a rooftop.
 
     Returns:
         A :class:`Heightmap` carrying the elevation grid and its scale.
@@ -745,6 +777,20 @@ def build_heightmap(
 
     width_m, _ = ground_extent(*covered)
     meters_per_px = width_m / resampled.shape[1]
+
+    if pre_clean is not None:
+        cleaned = np.asarray(
+            pre_clean(
+                Heightmap(
+                    elevation=cleaned,
+                    meters_per_px=meters_per_px,
+                    bbox=covered,
+                    zoom=zoom,
+                    requested_bbox=(south, west, north, east),
+                )
+            ),
+            dtype=np.float32,
+        )
 
     if despike:
         cleaned = _despike(cleaned, despike_threshold)

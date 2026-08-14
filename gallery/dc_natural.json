@@ -1,0 +1,28 @@
+{
+  "relief_m": 147.4,
+  "printed_relief_mm": 13.28,
+  "printed_relief_pct_of_width": 6.64,
+  "exaggeration_used": 12.5,
+  "smooth_sigma_used": 1.345,
+  "smooth_ground_m": 40.0,
+  "roughness": 20.3915,
+  "spike_count": 76678,
+  "isolated_spike_count": 6091,
+  "pct_flat": 4.46,
+  "meters_per_px": 29.75,
+  "zoom": 12,
+  "grid": [
+    933,
+    787
+  ],
+  "reference_width_mm": 200.0,
+  "style": "natural",
+  "scene": "dc_natural",
+  "terrain": "flat metro, OSM water",
+  "bbox": [
+    38.78,
+    -77.2,
+    38.99,
+    -76.88
+  ]
+}
