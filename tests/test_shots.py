@@ -102,13 +102,16 @@ def test_sample_budget_scales_with_output_pixels(tmp_path: Path) -> None:
 
 
 def test_run_folder_is_timestamped(tmp_path: Path) -> None:
+    """Folder names are for humans: dashed date, 12-hour clock, zone."""
+    import re
+
     model = _model(tmp_path)
     assert shots.main([str(model), "--shots-dir", str(tmp_path / "shots"), "--width", "150"]) == 0
 
     runs = list((tmp_path / "shots").iterdir())
     assert len(runs) == 1
-    stamp = runs[0].name
-    assert len(stamp) == 15 and stamp[8] == "-" and stamp[:8].isdigit()
+    # e.g. 2026-08-13_11-27-00PM-EDT
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}[AP]M-\w+", runs[0].name), runs[0].name
 
 
 def test_each_model_gets_every_view_plus_a_strip(tmp_path: Path) -> None:

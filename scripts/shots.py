@@ -30,6 +30,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import render3d  # noqa: E402
 
+from terrframe.runstamp import run_stamp  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SHOTS_DIR = REPO_ROOT / "shots"
 
@@ -243,8 +245,7 @@ def main(argv: list[str] | None = None) -> int:
         print("shots: no .stl or .3mf files found", file=sys.stderr)
         return 1
 
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    run_dir = args.shots_dir / (f"{stamp}_{args.label}" if args.label else stamp)
+    run_dir = args.shots_dir / run_stamp(args.label)
     run_dir.mkdir(parents=True, exist_ok=False)
     print(f"run {run_dir}", flush=True)
 

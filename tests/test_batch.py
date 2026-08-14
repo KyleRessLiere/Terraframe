@@ -46,9 +46,12 @@ def _run(tmp_path: Path, *extra: str) -> Path:
          "--runs-dir", str(tmp_path), *extra]
     )
     assert code == 0
-    runs = sorted(p for p in tmp_path.iterdir() if p.is_dir())
-    assert len(runs) >= 1
-    return runs[-1]
+    # By mtime, not name: a 12-hour clock does not sort lexically.
+    from terrframe.runstamp import newest_run
+
+    newest = newest_run(tmp_path)
+    assert newest is not None
+    return newest
 
 
 # ---------------------------------------------------------------------------
@@ -57,12 +60,15 @@ def _run(tmp_path: Path, *extra: str) -> Path:
 
 
 def test_run_creates_a_timestamped_directory(stub_tiles: None, tmp_path: Path) -> None:
-    """The run folder is named for when it happened."""
+    """The run folder is named for when it happened, readably."""
+    import re
+
     run_dir = _run(tmp_path, "--name", "site")
 
-    stamp = run_dir.name
-    assert len(stamp) == 15 and stamp[8] == "-", f"unexpected stamp {stamp!r}"
-    assert stamp[:8].isdigit() and stamp[9:].isdigit()
+    # e.g. 2026-08-13_11-27-00PM-EDT
+    assert re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}[AP]M-\w+", run_dir.name
+    ), f"unexpected stamp {run_dir.name!r}"
 
 
 def test_label_is_appended_to_the_directory_name(stub_tiles: None, tmp_path: Path) -> None:

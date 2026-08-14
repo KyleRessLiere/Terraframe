@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import preview  # noqa: E402
 
 from terrframe.heightmap import auto_smooth_sigma, build_heightmap  # noqa: E402
+from terrframe.runstamp import run_stamp  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RUNS_DIR = REPO_ROOT / "runs"
@@ -325,8 +326,7 @@ def main(argv: list[str] | None = None) -> int:
         chosen = args.preset or sorted(PRESETS)
         presets = [PRESETS[name] for name in chosen]
 
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    run_dir = args.runs_dir / (f"{stamp}_{args.label}" if args.label else stamp)
+    run_dir = args.runs_dir / run_stamp(args.label)
     run_dir.mkdir(parents=True, exist_ok=False)
 
     print(f"run {run_dir}", flush=True)
