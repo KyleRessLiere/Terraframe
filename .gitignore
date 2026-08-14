@@ -24,3 +24,6 @@ Thumbs.db
 
 # OSM feature cache
 .osm_cache/
+
+# rendered model shots (regenerable)
+shots/

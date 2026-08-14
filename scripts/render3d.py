@@ -22,6 +22,7 @@ from pathlib import Path
 import numpy as np
 import trimesh
 from PIL import Image
+from scipy.ndimage import uniform_filter
 
 __all__ = ["render_mesh", "load_mesh"]
 
@@ -30,6 +31,18 @@ VIEW_AZIMUTH = 315.0
 
 #: Camera elevation above the horizon.
 VIEW_ELEVATION = 32.0
+
+#: Named camera presets as ``(azimuth, elevation)``.
+#:
+#: ``top`` is north-up and straight down -- the view most people actually see a
+#: finished plaque from, and the one that shows the footprint and water shapes.
+#: ``iso`` shows relief and the base, which top-down flattens away. They answer
+#: different questions, so the batch renderer shoots both.
+VIEWS: dict[str, tuple[float, float]] = {
+    "iso": (VIEW_AZIMUTH, VIEW_ELEVATION),
+    "top": (0.0, 90.0),
+    "low": (VIEW_AZIMUTH, 15.0),
+}
 
 #: Light direction, also north-west and slightly higher than the camera.
 LIGHT_AZIMUTH = 315.0
@@ -101,21 +114,28 @@ def render_mesh(
     Returns:
         An RGB Pillow image.
     """
-    points, normals = _surface_samples(mesh, int(width * width * oversample))
-
     right, up, forward = _basis(azimuth, elevation)
-    screen_x = points @ right
-    screen_y = points @ up
-    depth = -(points @ forward)  # larger is nearer the camera
 
-    span_x = float(screen_x.max() - screen_x.min())
-    span_y = float(screen_y.max() - screen_y.min())
+    # Size the frame from the vertices alone first: the sample budget has to be
+    # per output *pixel*, not per width squared. A top-down view of a tall bbox
+    # projects far more pixels than an isometric one, and a fixed budget leaves
+    # it speckled with background showing through.
+    vx = mesh.vertices @ right
+    vy = mesh.vertices @ up
+    span_x = float(vx.max() - vx.min())
+    span_y = float(vy.max() - vy.min())
     if span_x <= 0 or span_y <= 0:
         raise ValueError("mesh projects to zero area; nothing to render")
 
     usable = 1.0 - 2.0 * margin
     scale = (width * usable) / span_x
     height = max(1, int(round(span_y * scale + 2.0 * margin * width)))
+
+    points, normals = _surface_samples(mesh, int(width * height * oversample))
+
+    screen_x = points @ right
+    screen_y = points @ up
+    depth = -(points @ forward)  # larger is nearer the camera
 
     px = (screen_x - screen_x.min()) * scale + margin * width
     # Screen rows grow downward, so the projected y axis is flipped.
@@ -140,7 +160,43 @@ def render_mesh(
     order = np.argsort(depth)
     canvas[rows[order], cols[order]] = colors[order]
 
-    return Image.fromarray(canvas, mode="RGB")
+    drawn = np.zeros((height, width), dtype=bool)
+    drawn[rows, cols] = True
+    return Image.fromarray(_fill_speckle(canvas, drawn), mode="RGB")
+
+
+def _fill_speckle(canvas: np.ndarray, drawn: np.ndarray) -> np.ndarray:
+    """Close single-pixel gaps left between surface samples.
+
+    Splatting points can never guarantee full coverage, so a few pixels inside
+    the silhouette keep the background colour and read as salt-and-pepper
+    noise. Only pixels almost entirely surrounded by drawn ones are filled, so
+    the silhouette and the background stay untouched.
+    """
+    filled = canvas.copy()
+    covered = drawn.copy()
+
+    # Two passes: the first closes isolated pixels, the second the small
+    # clusters those leave behind. A large flat face -- a lake surface -- gets
+    # samples in proportion to its area, which is sparse per pixel.
+    for _ in range(2):
+        neighbours = uniform_filter(covered.astype(np.float32), size=3) * 9.0
+        holes = ~covered & (neighbours >= 4.0)
+        if not holes.any():
+            break
+
+        for channel in range(3):
+            blurred = uniform_filter(
+                np.where(covered, filled[..., channel], 0).astype(np.float32), size=3
+            ) * 9.0
+            filled[..., channel] = np.where(
+                holes,
+                np.clip(blurred / np.maximum(neighbours, 1.0), 0, 255),
+                filled[..., channel],
+            ).astype(np.uint8)
+        covered |= holes
+
+    return filled
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -151,15 +207,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("model", type=Path, help="path to a .stl or .3mf file")
     parser.add_argument("-o", "--output", type=Path, help="output PNG (default: alongside input)")
     parser.add_argument("--width", type=int, default=900, help="output width in pixels")
+    parser.add_argument(
+        "--view",
+        choices=sorted(VIEWS),
+        help="named camera preset; overrides --azimuth/--elevation",
+    )
     parser.add_argument("--azimuth", type=float, default=VIEW_AZIMUTH, help="camera bearing")
     parser.add_argument("--elevation", type=float, default=VIEW_ELEVATION, help="camera height")
     args = parser.parse_args(argv)
+
+    azimuth, elevation = (
+        VIEWS[args.view] if args.view else (args.azimuth, args.elevation)
+    )
 
     mesh = load_mesh(args.model)
     destination = args.output or args.model.with_suffix(".png")
     destination.parent.mkdir(parents=True, exist_ok=True)
 
-    image = render_mesh(mesh, width=args.width, azimuth=args.azimuth, elevation=args.elevation)
+    image = render_mesh(mesh, width=args.width, azimuth=azimuth, elevation=elevation)
     image.save(destination)
 
     print(f"{args.model.name}: {len(mesh.vertices):,} vertices, {len(mesh.faces):,} faces")
