@@ -47,6 +47,7 @@ __all__ = [
     "rasterize_mask",
     "remove_buildings",
     "should_remove_buildings",
+    "stamp_shoreline",
     "stamp_water",
 ]
 
@@ -92,7 +93,23 @@ LAYER_QUERIES: dict[str, tuple[tuple[str, ...], str]] = {
 BUILDING_DILATION_PX = 1
 
 #: Depth, in millimetres, that stamped water is recessed below its bank.
-WATER_DEPTH_MM = 0.3
+#:
+#: Deep enough to read as water in a single-colour print. The product cannot
+#: depend on colour-change printing, so depth and geometry do all the work; a
+#: shallow recess reads as a tone shift and disappears in one filament.
+WATER_DEPTH_MM = 1.0
+
+#: Width of the raised bead outlining every water body, in millimetres.
+SHORELINE_WIDTH_MM = 0.5
+
+#: Height of that bead above local terrain, in millimetres.
+SHORELINE_HEIGHT_MM = 0.4
+
+#: Horizontal budget for the bank wall, in millimetres. The drop from bead
+#: crown to water plane must happen within this distance to read as a hard
+#: step rather than a slope. It is one pixel by construction; this is the
+#: assertion that the grid is fine enough for that pixel to be small enough.
+MAX_BANK_STEP_MM = 0.3
 
 
 class OverpassError(RuntimeError):
@@ -432,6 +449,77 @@ def stamp_water(
     return elevation
 
 
+def stamp_shoreline(
+    hm: Heightmap,
+    water_geoms: list[BaseGeometry],
+    width_mm: float = SHORELINE_WIDTH_MM,
+    height_mm: float = SHORELINE_HEIGHT_MM,
+    elevation: np.ndarray | None = None,
+    mm_per_meter: float | None = None,
+) -> np.ndarray:
+    """Raise a rounded bead along every shoreline, on the terrain side.
+
+    The cross-section, walking inward from dry land, is:
+    terrain, a gaussian-rounded shoulder rising to the crown, then a hard drop
+    to the flat water plane. The water side is never touched, so the water
+    stays dead flat right up to its edge and the bank stays a wall.
+
+    Rather than extracting ``geom.boundary`` per polygon, the bead is driven by
+    a distance field from the union water mask. That gets three things for
+    free: overlapping or near-touching shorelines produce one bead instead of
+    stacking, interior rings are outlined because an island is simply terrain
+    adjacent to water, and nothing can bleed across the boundary because the
+    field is zero wherever water is.
+
+    Args:
+        hm: Heightmap supplying grid, scale and the water geometry's frame.
+        water_geoms: The same polygons passed to :func:`stamp_water`.
+        width_mm: How far the bead's shoulder reaches onto the terrain.
+        height_mm: Crown height above local terrain. Zero disables the bead.
+        elevation: Array to raise; defaults to ``hm.elevation``. Pass the
+            already-recessed array so the bead lands after the water stamp.
+        mm_per_meter: Vertical print scale; defaults to the value implied by
+            ``hm``.
+
+    Returns:
+        A new float32 elevation array.
+    """
+    base = hm.elevation if elevation is None else elevation
+    out = np.array(base, dtype=np.float32)
+    if not water_geoms or height_mm <= 0.0:
+        return out
+
+    scale = _mm_per_meter(hm) if mm_per_meter is None else mm_per_meter
+    if scale <= 0.0:
+        raise ValueError(f"mm_per_meter must be positive, got {scale}")
+
+    water = rasterize_mask(water_geoms, hm)
+    if not water.any() or water.all():
+        return out
+
+    mm_per_px = _mm_per_pixel(hm)
+    width_px = max(width_mm / mm_per_px, 1.0)
+
+    # Distance in pixels to the nearest water pixel; zero inside water.
+    distance = distance_transform_edt(~water)
+
+    # Crown sits one pixel out from the water, then falls off outward. sigma is
+    # half the requested width so the shoulder has faded to ~14% by then.
+    sigma = max(width_px / 2.0, 0.5)
+    shoulder = np.exp(-(((distance - 1.0) / sigma) ** 2) / 2.0)
+    bead = np.where(distance >= 1.0, shoulder, 0.0)
+    bead[water] = 0.0  # hard edge: nothing crosses onto the water plane
+
+    height_m = height_mm / scale
+    return (out + bead.astype(np.float32) * np.float32(height_m)).astype(np.float32, copy=False)
+
+
+def _mm_per_pixel(hm: Heightmap, width_mm: float = 200.0) -> float:
+    """Printed millimetres spanned by one pixel, matching the mesh's pitch."""
+    cols = hm.elevation.shape[1]
+    return width_mm / (cols - 1) if cols > 1 else width_mm
+
+
 def _edge_minimum(elevation: np.ndarray, mask: np.ndarray) -> float | None:
     """Lowest elevation on the ring of pixels just outside a mask.
 
@@ -569,6 +657,8 @@ def apply_features(
     style: str,
     feature_set: FeatureSet,
     water_depth_mm: float = WATER_DEPTH_MM,
+    shoreline_mm: float = SHORELINE_HEIGHT_MM,
+    shoreline_width_mm: float = SHORELINE_WIDTH_MM,
 ) -> Heightmap:
     """Stamp a style's features onto an already-exaggerated heightmap.
 
@@ -595,9 +685,18 @@ def apply_features(
 
     if "water" in layers and feature_set["water"]:
         elevation = stamp_water(hm, feature_set["water"], depth_mm=water_depth_mm)
+        # Bead goes on after the recess, so it rides the finished bank.
+        elevation = stamp_shoreline(
+            hm,
+            feature_set["water"],
+            width_mm=shoreline_width_mm,
+            height_mm=shoreline_mm,
+            elevation=elevation,
+        )
         water_mask = rasterize_mask(feature_set["water"], hm)
 
-    # Linework and markers land here, in that order, once implemented.
+    # Linework and markers land here, in that order, once implemented. Roads
+    # will ride over the bead through the same max-semantics.
 
     return Heightmap(
         elevation=elevation,

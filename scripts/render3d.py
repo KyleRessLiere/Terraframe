@@ -55,6 +55,9 @@ BACKGROUND_RGB = (24, 25, 28)
 #: Shadow floor, so downward faces stay readable instead of going black.
 AMBIENT = 0.28
 
+#: Fixed seed for surface sampling, so renders are reproducible run to run.
+SAMPLE_SEED = 20260813
+
 
 def load_mesh(path: str | Path) -> trimesh.Trimesh:
     """Load a mesh file, concatenating scenes into one body."""
@@ -84,7 +87,11 @@ def _surface_samples(mesh: trimesh.Trimesh, budget: int) -> tuple[np.ndarray, np
 
     Vertices are included too, to keep ridges and the silhouette crisp.
     """
-    points, face_index = trimesh.sample.sample_surface(mesh, budget)
+    # Seeded: an unseeded sampler makes every render of the same mesh differ by
+    # a few percent of pixels, which in a visual regression harness reads as a
+    # real change in the terrain. Two styles that share identical geometry must
+    # produce identical images.
+    points, face_index = trimesh.sample.sample_surface(mesh, budget, seed=SAMPLE_SEED)
     normals = mesh.face_normals[face_index]
 
     return (

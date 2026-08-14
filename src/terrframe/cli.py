@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 
 from .features import (
+    SHORELINE_HEIGHT_MM,
     STYLES,
     WATER_DEPTH_MM,
     apply_features,
@@ -189,10 +190,23 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--water-depth",
         "--water-depth-mm",
+        dest="water_depth",
         type=float,
         default=WATER_DEPTH_MM,
-        help=f"engrave depth for stamped water, in mm (default: {WATER_DEPTH_MM})",
+        metavar="MM",
+        help=f"recess depth for stamped water, in mm (default: {WATER_DEPTH_MM})",
+    )
+    parser.add_argument(
+        "--shoreline",
+        type=float,
+        default=SHORELINE_HEIGHT_MM,
+        metavar="MM",
+        help=(
+            "height of the raised bead outlining water, in mm; 0 disables "
+            f"(default: {SHORELINE_HEIGHT_MM})"
+        ),
     )
     parser.add_argument(
         "--target-px",
@@ -278,7 +292,11 @@ def main(argv: list[str] | None = None) -> int:
         # Stamps go on after exaggeration, so their printed size is fixed.
         if features is not None:
             heightmap = apply_features(
-                heightmap, args.style, features, water_depth_mm=args.water_depth_mm
+                heightmap,
+                args.style,
+                features,
+                water_depth_mm=args.water_depth,
+                shoreline_mm=args.shoreline,
             )
 
         mesh = heightmap_to_mesh(
