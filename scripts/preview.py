@@ -19,6 +19,12 @@ import numpy as np
 from PIL import Image
 from scipy.ndimage import label
 
+from terrframe.features import (
+    STYLES,
+    apply_features,
+    fetch_osm_or_warn,
+    layers_for_style,
+)
 from terrframe.heightmap import Heightmap, build_heightmap
 
 #: Hypsometric ramp: relative height -> RGB. Low ground reads green, mid
@@ -235,6 +241,12 @@ def main(argv: list[str] | None = None) -> int:
         "--target-px", type=int, default=800, help="pixel span of the bbox's longer side"
     )
     parser.add_argument(
+        "--style",
+        choices=STYLES,
+        default="minimal",
+        help="minimal = terrain only; natural/detailed add OSM water (default: minimal)",
+    )
+    parser.add_argument(
         "--smooth",
         type=_parse_smooth,
         default="auto",
@@ -274,6 +286,11 @@ def main(argv: list[str] | None = None) -> int:
         smooth_px=args.smooth,
         despike=args.despike,
     )
+
+    if args.style != "minimal":
+        features = fetch_osm_or_warn(args.bbox, layers_for_style(args.style, "off"))
+        heightmap = apply_features(heightmap, args.style, features)
+        print(f"style     {args.style} ({len(features['water'])} water polys)", file=sys.stderr)
 
     elevation = heightmap.elevation
     width_m, height_m = heightmap.size_meters
